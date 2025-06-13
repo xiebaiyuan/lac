@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 3.10)
 project(lac CXX C)
 
 option(WITH_STATIC_LIB "Compile demo with static/shared library, default use static."  OFF)
