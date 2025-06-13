@@ -17,6 +17,8 @@ limitations under the License. */
 #include "lac_custom.h"
 #include <paddle_inference_api.h>
 #include <iostream>
+#include <sstream>
+#include <iomanip>
 
 /* LAC构造函数：初始化、装载模型和词典 */
 LAC::LAC(const std::string& model_path, CODE_TYPE type)
@@ -390,4 +392,93 @@ int LAC::merge_rank_weights_with_word_length(const std::vector<std::vector<std::
 // 保留原有的简化版本作为备用
 int LAC::merge_rank_weights(const std::vector<std::vector<std::string>>& tags_for_rank_batch) {
     return merge_rank_weights_with_word_length(tags_for_rank_batch);
+}
+
+/* 将LAC结果转换为JSON格式字符串 */
+std::string LAC::results_to_json(const std::vector<OutputItem>& results) {
+    std::ostringstream json;
+    json << "[";
+    
+    for (size_t i = 0; i < results.size(); ++i) {
+        json << "{";
+        json << "\"word\":\"" << escape_json_string(results[i].word) << "\",";
+        json << "\"tag\":\"" << results[i].tag << "\"";
+        
+        // 如果有rank权重，添加到JSON中
+        if (results[i].rank >= 0) {
+            json << ",\"rank\":" << results[i].rank;
+        }
+        
+        json << "}";
+        if (i < results.size() - 1) {
+            json << ",";
+        }
+    }
+    
+    json << "]";
+    return json.str();
+}
+
+/* 将批量LAC结果转换为JSON格式字符串 */
+std::string LAC::results_to_json(const std::vector<std::vector<OutputItem>>& results_batch) {
+    std::ostringstream json;
+    json << "[";
+    
+    for (size_t i = 0; i < results_batch.size(); ++i) {
+        json << results_to_json(results_batch[i]);
+        if (i < results_batch.size() - 1) {
+            json << ",";
+        }
+    }
+    
+    json << "]";
+    return json.str();
+}
+
+/* JSON字符串转义辅助函数 */
+std::string LAC::escape_json_string(const std::string& input) {
+    std::ostringstream escaped;
+    for (char c : input) {
+        switch (c) {
+            case '"':  escaped << "\\\""; break;
+            case '\\': escaped << "\\\\"; break;
+            case '\b': escaped << "\\b"; break;
+            case '\f': escaped << "\\f"; break;
+            case '\n': escaped << "\\n"; break;
+            case '\r': escaped << "\\r"; break;
+            case '\t': escaped << "\\t"; break;
+            default:
+                if (c >= 0 && c < 32) {
+                    escaped << "\\u" << std::hex << std::setw(4) << std::setfill('0') << static_cast<int>(c);
+                } else {
+                    escaped << c;
+                }
+                break;
+        }
+    }
+    return escaped.str();
+}
+
+/* Rank模式运行并返回JSON格式结果 - 单个query */
+std::string LAC::run_rank_json(const std::string& query) {
+    auto results = run_rank(query);
+    return results_to_json(results);
+}
+
+/* Rank模式运行并返回JSON格式结果 - 批量query */
+std::string LAC::run_rank_json(const std::vector<std::string>& querys) {
+    auto results = run_rank(querys);
+    return results_to_json(results);
+}
+
+/* 普通模式运行并返回JSON格式结果 - 单个query */
+std::string LAC::run_json(const std::string& query) {
+    auto results = run(query);
+    return results_to_json(results);
+}
+
+/* 普通模式运行并返回JSON格式结果 - 批量query */
+std::string LAC::run_json(const std::vector<std::string>& querys) {
+    auto results = run(querys);
+    return results_to_json(results);
 }

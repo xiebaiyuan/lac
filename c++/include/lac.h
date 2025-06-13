@@ -88,9 +88,16 @@ public:
     std::vector<OutputItem> run_rank(const std::string& query);
     std::vector<std::vector<OutputItem>> run_rank(const std::vector<std::string>& query);
     int merge_rank_weights(const std::vector<std::vector<std::string>>& tags_for_rank_batch);
+    std::string escape_json_string(const std::string& word);
+    std::string results_to_json(const std::vector<OutputItem>& results);
+    std::string results_to_json(const std::vector<std::vector<OutputItem>>& results_batch);
     int merge_rank_weights_with_word_length(const std::vector<std::vector<std::string>>& tags_for_rank_batch);
     int parse_rank_results(const std::shared_ptr<paddle_infer::Tensor>& rank_tensor, 
                            std::vector<std::vector<OutputItem>>& results);
+    std::string run_rank_json(const std::string& query);
+    std::string run_rank_json(const std::vector<std::string>& querys);
+    std::string run_json(const std::string& query);
+    std::string run_json(const std::vector<std::string>& querys);
 
     std::shared_ptr<Customization> custom;
 };
