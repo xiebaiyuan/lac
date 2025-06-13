@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.0)
 project(lac CXX C)
 
-option(WITH_STATIC_LIB "Compile demo with static/shared library, default use static."  ON)
+option(WITH_STATIC_LIB "Compile demo with static/shared library, default use static."  OFF)
 
 option(WITH_DEMO "Compile C++ demo or not, default yes" ON)
 option(WITH_JNILIB "Compile jni library for Java or not, default not" OFF)
@@ -35,7 +35,8 @@ macro(safe_set_static_flag)
 endmacro()
 
 if(NOT DEFINED PADDLE_ROOT)
-    message(FATAL_ERROR "please set PADDLE_ROOT with -DPADDLE_ROOT=/path/paddle/lib")
+    set(PADDLE_ROOT /Users/xiebaiyuan/PaddleOCR/deploy/cpp_infer/paddle_inference/paddle_inference_install_dir_mac_universal/)
+#    message(FATAL_ERROR "please set PADDLE_ROOT with -DPADDLE_ROOT=/path/paddle/lib")
 endif()
 if (WITH_JNILIB AND NOT DEFINED JAVA_HOME)
     message(FATAL_ERROR "please set JAVA_HOME with -DJAVA_HOME=/path/of/java")
@@ -63,7 +64,7 @@ link_directories("${PADDLE_LIB_THIRD_PARTY_PATH}xxhash/lib")
 link_directories("${PADDLE_ABS_PATH}/paddle/lib")
 
 
-#link_libraries(paddle_fluid)
+#link_libraries(libpaddle_inference)
 
 if (WIN32)
   add_definitions("/DGOOGLE_GLOG_DLL_DECL=")
@@ -129,14 +130,14 @@ if (EXISTS ${openblas_inc_path} AND EXISTS ${openblas_lib_path})
 else ()
     message(STATUS "openblas lib not found.")
 endif()
-
+message(CMAKE_SHARED_LIBRARY_SUFFIX "${CMAKE_SHARED_LIBRARY_SUFFIX}")
 if(WITH_STATIC_LIB)
-    set(DEPS ${PADDLE_ABS_PATH}/paddle/lib/libpaddle_fluid${CMAKE_STATIC_LIBRARY_SUFFIX})
+    set(DEPS ${PADDLE_ABS_PATH}/paddle/lib/libpaddle_inference${CMAKE_STATIC_LIBRARY_SUFFIX})
 else()
     if(WIN32)
-        set(DEPS ${PADDLE_ABS_PATH}/paddle/lib/paddle_fluid${CMAKE_SHARED_LIBRARY_SUFFIX})
+        set(DEPS ${PADDLE_ABS_PATH}/paddle/lib/paddle_inference${CMAKE_SHARED_LIBRARY_SUFFIX})
     else()
-        set(DEPS ${PADDLE_ABS_PATH}/paddle/lib/libpaddle_fluid${CMAKE_SHARED_LIBRARY_SUFFIX})
+        set(DEPS ${PADDLE_ABS_PATH}/paddle/lib/libpaddle_inference${CMAKE_SHARED_LIBRARY_SUFFIX})
     endif()
 endif()
 
@@ -170,6 +171,11 @@ target_link_libraries(lac_demo lac ${DEPS})
 add_executable(lac_multi c++/lac_multi.cpp)
 set_target_properties(lac_multi PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
 target_link_libraries(lac_multi lac ${DEPS})
+
+# 添加rank demo
+add_executable(lac_rank_demo c++/lac_rank_demo.cpp)
+set_target_properties(lac_rank_demo PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
+target_link_libraries(lac_rank_demo lac ${DEPS})
 endif()
 
 # for jni lib
@@ -195,7 +201,7 @@ if(WIN32)
   endif()
   if(NOT WITH_STATIC_LIB)
       add_custom_command(TARGET lac_demo POST_BUILD 
-        COMMAND ${CMAKE_COMMAND} -E copy "${PADDLE_ABS_PATH}/paddle/lib/paddle_fluid.dll" ${CMAKE_BINARY_DIR}/${CMAKE_BUILD_TYPE}
+        COMMAND ${CMAKE_COMMAND} -E copy "${PADDLE_ABS_PATH}/paddle/lib/libpaddle_inference.dll" ${CMAKE_BINARY_DIR}/${CMAKE_BUILD_TYPE}
       )
   endif()
 endif()
@@ -209,6 +215,7 @@ install(FILES ${PROJECT_SOURCE_DIR}/c++/include/lac.h
 if (WITH_DEMO)
 install(TARGETS lac_demo DESTINATION ${PROJECT_SOURCE_DIR}/output/bin)
 install(TARGETS lac_multi DESTINATION ${PROJECT_SOURCE_DIR}/output/bin)
+install(TARGETS lac_rank_demo DESTINATION ${PROJECT_SOURCE_DIR}/output/bin)
 endif()
 
 if (WITH_JNILIB)

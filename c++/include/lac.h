@@ -28,11 +28,14 @@ enum CODE_TYPE
     CODE_UTF8 = 1,
 };
 
-/* 模型输出的结构 */
 struct OutputItem
 {
-    std::string word;   // 分词结果
-    std::string tag;    // 单词类型
+    std::string word;
+    std::string tag;
+    int rank;  // 添加rank字段
+
+    // 初始化构造函数
+    OutputItem() : word(""), tag(""), rank(0) {}
 };
 
 
@@ -44,53 +47,46 @@ class Customization;
 
 class LAC
 {
-public:
-    /* 初始化：装载模型和词典 */
-    LAC(LAC &lac);      // 
-    LAC(const std::string& model_path, CODE_TYPE type = CODE_UTF8);
-
-    /* 调用程序 */
-    std::vector<OutputItem> run(const std::string &query);                           // 单个query
-    std::vector<std::vector<OutputItem>> run(const std::vector<std::string> &query); // 批量query
-
-    /* 装载用户词典 */
-    int load_customization(const std::string& filename);
-
 private:
-    /* 将字符串输入转为Tensor */
-    int feed_data(const std::vector<std::string> &querys);
-
-    /* 将模型标签结果转换为模型输出格式 */
-    int parse_targets(
-        const std::vector<std::string> &tag_ids,
-        const std::vector<std::string> &words,
-        std::vector<OutputItem> &result);
-
-    // 编码类型，需要同时修改字典文件的编码
     CODE_TYPE _codetype;
-
-    // 中间变量
-    std::vector<std::string> _seq_words;
-    std::vector<std::vector<std::string>> _seq_words_batch;
     std::vector<std::vector<size_t>> _lod;
-    std::vector<std::string> _labels;
-    std::vector<OutputItem> _results;
-    std::vector<std::vector<OutputItem>> _results_batch;
-
-    // 数据转换词典
     std::shared_ptr<std::unordered_map<int64_t, std::string>> _id2label_dict;
     std::shared_ptr<std::unordered_map<std::string, std::string>> _q2b_dict;
     std::shared_ptr<std::unordered_map<std::string, int64_t>> _word2id_dict;
     int64_t _oov_id;
+    paddle::PaddlePlace _place;
+    std::shared_ptr<paddle_infer::Predictor> _predictor;
+    std::shared_ptr<paddle_infer::Tensor> _input_tensor;
+    std::shared_ptr<paddle_infer::Tensor> _output_tensor;
+    std::vector<std::string> _seq_words;
+    std::vector<std::vector<std::string>> _seq_words_batch;
+    std::vector<std::string> _labels;
+    std::vector<OutputItem> _results;
+    std::vector<std::vector<OutputItem>> _results_batch;
 
-    // paddle数据结构
-    paddle::PaddlePlace _place;                             //PaddlePlace::kGPU，KCPU
-    std::unique_ptr<paddle::PaddlePredictor> _predictor;    // 预测器
-    std::unique_ptr<paddle::ZeroCopyTensor> _input_tensor;  // 输入空间
-    std::unique_ptr<paddle::ZeroCopyTensor> _output_tensor; // 输出空间
+    // Rank mode properties
+    bool _rank_mode;
+    std::shared_ptr<paddle_infer::Predictor> _rank_predictor;
+    std::shared_ptr<paddle_infer::Tensor> _rank_output_tensor;
 
+public:
+    LAC(const std::string& model_path, CODE_TYPE type = CODE_TYPE::CODE_UTF8);
+    LAC(LAC&);
+    int load_customization(const std::string& customization_file);
+    int feed_data(const std::vector<std::string>& querys);
+    int parse_targets(const std::vector<std::string>& tags,
+                      const std::vector<std::string>& words,
+                      std::vector<OutputItem>& result);
+    std::vector<OutputItem> run(const std::string& query);
+    std::vector<std::vector<OutputItem>> run(const std::vector<std::string>& query);
 
-    // 人工干预词典
+    // Rank mode methods
+    void enable_rank_mode(const std::string& rank_model_path);
+    std::vector<OutputItem> run_rank(const std::string& query);
+    std::vector<std::vector<OutputItem>> run_rank(const std::vector<std::string>& query);
+    int parse_rank_results(const std::shared_ptr<paddle_infer::Tensor>& rank_tensor, 
+                          std::vector<std::vector<OutputItem>>& results);
+
     std::shared_ptr<Customization> custom;
 };
 #endif  // LAC_CLASS

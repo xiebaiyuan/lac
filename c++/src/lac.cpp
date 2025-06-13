@@ -15,7 +15,8 @@ limitations under the License. */
 #include "lac.h"
 #include "lac_util.h"
 #include "lac_custom.h"
-#include "paddle_api.h"
+#include <paddle_inference_api.h>
+#include <iostream>
 
 /* LAC构造函数：初始化、装载模型和词典 */
 LAC::LAC(const std::string& model_path, CODE_TYPE type)
@@ -24,6 +25,10 @@ LAC::LAC(const std::string& model_path, CODE_TYPE type)
       _id2label_dict(new std::unordered_map<int64_t, std::string>),
       _q2b_dict(new std::unordered_map<std::string, std::string>),
       _word2id_dict(new std::unordered_map<std::string, int64_t>),
+      _rank_mode(false),
+      _input_tensor(nullptr),
+      _output_tensor(nullptr),
+      _rank_output_tensor(nullptr),
       custom(NULL)
 {
 
@@ -37,27 +42,36 @@ LAC::LAC(const std::string& model_path, CODE_TYPE type)
 
     // 使用AnalysisConfig装载模型，会进一步优化模型
     this->_place = paddle::PaddlePlace::kCPU;
-    paddle::AnalysisConfig config;
+    paddle_infer::Config config;
     // config.SwitchIrOptim(false);       // 关闭优化
-    config.EnableMKLDNN();
+    // config.EnableMKLDNN();
     config.DisableGpu();
     config.DisableGlogInfo();
     config.SetModel(model_path + "/model");
+    // config.SetProgFile(model_path + "/model/__model__");
+    // config.SetParamsFile(model_path + "/model/__params__");
+    std::cout << "Load model from: " << model_path  << std::endl;
+    // config.SetModel(model_path + "/model/__model__", model_path + "/model/__params__");
     config.SetCpuMathLibraryNumThreads(1);
     config.SwitchUseFeedFetchOps(false);
-    this->_predictor = paddle::CreatePaddlePredictor<paddle::AnalysisConfig>(config);
+    this->_predictor = paddle_infer::CreatePredictor(config);
+    // this->_predictor = paddle::CreatePredictor<paddle::AnalysisConfig>(config);
 
     // 初始化输入输出变量
     auto input_names = this->_predictor->GetInputNames();
-    this->_input_tensor = this->_predictor->GetInputTensor(input_names[0]);
+    this->_input_tensor = this->_predictor->GetInputHandle(input_names[0]);
+
+    std::cout << "Input tensor name: " << input_names[0] << std::endl;
     auto output_names = this->_predictor->GetOutputNames();
-    this->_output_tensor = this->_predictor->GetOutputTensor(output_names[0]);
+    this->_output_tensor = this->_predictor->GetOutputHandle(output_names[0]);
+    
     this->_oov_id = this->_word2id_dict->size() - 1;
     auto word_iter = this->_word2id_dict->find("OOV");
     if (word_iter != this->_word2id_dict->end())
     {
         this->_oov_id = word_iter->second;
     }
+    std::cout << "OOV id: " << this->_oov_id << std::endl;
 }
 
 /* 拷贝构造函数，用于多线程重载 */
@@ -70,12 +84,15 @@ LAC::LAC(LAC &lac)
       _oov_id(lac._oov_id),
       _place(lac._place),
       _predictor(lac._predictor->Clone()),
+      _input_tensor(nullptr),
+      _output_tensor(nullptr),
+      _rank_output_tensor(nullptr),
       custom(lac.custom)
 {
     auto input_names = this->_predictor->GetInputNames();
-    this->_input_tensor = this->_predictor->GetInputTensor(input_names[0]);
+    this->_input_tensor = this->_predictor->GetInputHandle(input_names[0]);
     auto output_names = this->_predictor->GetOutputNames();
-    this->_output_tensor = this->_predictor->GetOutputTensor(output_names[0]);
+    this->_output_tensor = this->_predictor->GetOutputHandle(output_names[0]);
 }
 
 /* 装载用户词典 */
@@ -92,6 +109,7 @@ int LAC::load_customization(const std::string& filename){
 /* 将字符串输入转为Tensor */
 int LAC::feed_data(const std::vector<std::string> &querys)
 {
+    std::cout << "Feed data: " << querys.size() << " queries." << std::endl;
     this->_seq_words_batch.clear();
     this->_lod[0].clear();
 
@@ -108,6 +126,7 @@ int LAC::feed_data(const std::vector<std::string> &querys)
     this->_input_tensor->Reshape({shape, 1});
 
     int64_t *input_d = this->_input_tensor->mutable_data<int64_t>(this->_place);
+    
     int index = 0;
     for (size_t i = 0; i < this->_seq_words_batch.size(); ++i)
     {
@@ -161,6 +180,7 @@ int LAC::parse_targets(
 
 std::vector<OutputItem> LAC::run(const std::string &query)
 {
+    std::cout << "Run LAC with query: " << query << std::endl;
     std::vector<std::string> query_vector = std::vector<std::string>({query});
     auto result = run(query_vector);
     return result[0];
@@ -168,13 +188,15 @@ std::vector<OutputItem> LAC::run(const std::string &query)
 
 std::vector<std::vector<OutputItem>> LAC::run(const std::vector<std::string> &querys)
 {
-
+    std::cout << "Run LAC with " << querys.size() << " queries." << std::endl;
     this->feed_data(querys);
-    this->_predictor->ZeroCopyRun();
+    std::cout << "Input tensor shape: " << std::endl;
+    this->_predictor->Run();
 
     // 对模型输出进行解码
     int output_size = 0;
     int64_t *output_d = this->_output_tensor->data<int64_t>(&(this->_place), &output_size);
+    
     this->_labels.clear();
     this->_results_batch.clear();
     for (size_t i = 0; i < this->_lod[0].size() - 1; ++i)
@@ -198,4 +220,150 @@ std::vector<std::vector<OutputItem>> LAC::run(const std::vector<std::string> &qu
     }
 
     return this->_results_batch;
+}
+
+/* 开启Rank模式，加载rank模型 */
+void LAC::enable_rank_mode(const std::string& rank_model_path) {
+    // 使用AnalysisConfig装载Rank模型
+    this->_rank_mode = true;
+    paddle_infer::Config rank_config;
+    rank_config.DisableGpu();
+    rank_config.DisableGlogInfo();
+    rank_config.SetModel(rank_model_path + "/model");
+    rank_config.SetCpuMathLibraryNumThreads(1);
+    rank_config.SwitchUseFeedFetchOps(false);
+    this->_rank_predictor = paddle_infer::CreatePredictor(rank_config);
+    
+    std::cout << "Rank model loaded from: " << rank_model_path << std::endl;
+    auto output_names = this->_rank_predictor->GetOutputNames();
+    this->_rank_output_tensor = this->_rank_predictor->GetOutputHandle(output_names[0]);
+}
+
+/* Rank模式运行，单个query */
+std::vector<OutputItem> LAC::run_rank(const std::string& query) {
+    std::vector<std::string> query_vector = std::vector<std::string>({query});
+    auto results = run_rank(query_vector);
+    return results[0];
+}
+
+/* Rank模式运行，批量query */
+std::vector<std::vector<OutputItem>> LAC::run_rank(const std::vector<std::string>& querys) {
+    if (!this->_rank_mode) {
+        std::cerr << "Rank mode not enabled! Please call enable_rank_mode() first." << std::endl;
+        return run(querys);
+    }
+    
+    // 首先进行LAC处理
+    this->feed_data(querys);
+    this->_predictor->Run();
+    
+    // 获取LAC输出
+    int output_size = 0;
+    int64_t *output_d = this->_output_tensor->data<int64_t>(&(this->_place), &output_size);
+    
+    // 清空结果
+    this->_labels.clear();
+    this->_results_batch.clear();
+    
+    // LAC处理结果
+    for (size_t i = 0; i < this->_lod[0].size() - 1; ++i) {
+        for (size_t j = 0; j < _lod[0][i + 1] - _lod[0][i]; ++j) {
+            int64_t cur_label_id = output_d[_lod[0][i] + j];
+            auto it = this->_id2label_dict->find(cur_label_id);
+            this->_labels.push_back(it->second);
+        }
+
+        // 用户自定义词典处理
+        if (custom){
+            custom->parse_customization(this->_seq_words_batch[i], this->_labels);
+        }
+
+        parse_targets(this->_labels, this->_seq_words_batch[i], this->_results);
+        this->_results_batch.push_back(this->_results);
+        this->_labels.clear();
+    }
+    
+    // Rank模型处理 - 另一种方案
+    // 获取rank模型的输入名称
+    auto rank_input_names = this->_rank_predictor->GetInputNames();
+    
+    if (rank_input_names.size() >= 2) {
+        // 获取LAC模型的输入输出数据
+        auto input_lod = this->_input_tensor->lod();
+        auto input_shape = this->_input_tensor->shape();
+        auto output_lod = this->_output_tensor->lod();
+        auto output_shape = this->_output_tensor->shape();
+        
+        // 创建rank模型的输入句柄
+        auto rank_input_handle1 = this->_rank_predictor->GetInputHandle(rank_input_names[0]);
+        auto rank_input_handle2 = this->_rank_predictor->GetInputHandle(rank_input_names[1]);
+        
+        // 设置LOD和形状
+        rank_input_handle1->SetLoD(input_lod);
+        rank_input_handle1->Reshape(input_shape);
+        rank_input_handle2->SetLoD(output_lod);
+        rank_input_handle2->Reshape(output_shape);
+        
+        // 复制数据
+        int64_t *input_d = this->_input_tensor->data<int64_t>(&(this->_place), &output_size);
+        int64_t *output_d = this->_output_tensor->data<int64_t>(&(this->_place), &output_size);
+        
+        int64_t *rank_input_d1 = rank_input_handle1->mutable_data<int64_t>(this->_place);
+        int64_t *rank_input_d2 = rank_input_handle2->mutable_data<int64_t>(this->_place);
+        
+        // 复制数据
+        size_t input_size = input_shape[0];
+        size_t output_size = output_shape[0];
+        
+        std::memcpy(rank_input_d1, input_d, input_size * sizeof(int64_t));
+        std::memcpy(rank_input_d2, output_d, output_size * sizeof(int64_t));
+    } else {
+        std::cerr << "Rank model doesn't have enough inputs!" << std::endl;
+        return this->_results_batch;
+    }
+    
+    // 运行rank模型
+    this->_rank_predictor->Run();
+    
+    // 解析Rank结果并合并到LAC结果中
+    parse_rank_results(this->_rank_output_tensor, this->_results_batch);
+    
+    return this->_results_batch;
+}
+
+/* 解析Rank模型的输出并合并到结果中 */
+int LAC::parse_rank_results(const std::shared_ptr<paddle_infer::Tensor>& rank_tensor, 
+                          std::vector<std::vector<OutputItem>>& results) {
+    auto lod = rank_tensor->lod();
+    if (lod.empty() || lod[0].empty()) {
+        return -1;
+    }
+    
+    int output_size = 0;
+    int64_t *rank_output = rank_tensor->data<int64_t>(&(this->_place), &output_size);
+    
+    size_t batch_size = lod[0].size() - 1;
+    for (size_t i = 0; i < batch_size && i < results.size(); ++i) {
+        size_t begin = lod[0][i];
+        size_t end = lod[0][i + 1];
+        
+        std::vector<int> rank_values;
+        for (size_t j = begin; j < end; ++j) {
+            rank_values.push_back(static_cast<int>(rank_output[j]));
+        }
+        
+        // 为每个结果项添加rank值
+        if (!rank_values.empty()) {
+            size_t rank_idx = 0;
+            for (size_t j = 0; j < results[i].size(); ++j) {
+                if (rank_idx < rank_values.size()) {
+                    results[i][j].rank = rank_values[rank_idx++];
+                } else {
+                    results[i][j].rank = 0; // 默认rank值
+                }
+            }
+        }
+    }
+    
+    return 0;
 }

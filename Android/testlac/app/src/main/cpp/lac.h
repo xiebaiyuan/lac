@@ -30,8 +30,12 @@ enum CODE_TYPE
 /* 模型输出的结构 */
 struct OutputItem
 {
-    std::string word;   // 分词结果
-    std::string tag;    // 单词类型
+    std::string word;
+    std::string tag;
+    int rank;  // 添加rank字段
+
+    // 初始化构造函数
+    OutputItem() : word(""), tag(""), rank(0) {}
 };
 
 #endif

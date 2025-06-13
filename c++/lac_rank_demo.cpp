@@ -20,37 +20,46 @@ using namespace std;
 
 int main(int argc, char* argv[]){
     // 读取命令行参数
-    string model_path = "../models/lac_model";
+    string lac_model_path = "../models/lac_model";
+    string rank_model_path = "../models/rank_model";
     string dict_path = "";
+    
     if (argc > 1){
-        model_path = argv[1];
+        lac_model_path = argv[1];
     }
     if (argc > 2){
-        dict_path = argv[2];
+        rank_model_path = argv[2];
+    }
+    if (argc > 3){
+        dict_path = argv[3];
     }
 
-    // 装载模型和用户词典
-    LAC lac(model_path);
+    // 装载LAC模型
+    LAC lac(lac_model_path);
+    
+    // 启用rank模式
+    lac.enable_rank_mode(rank_model_path);
+    
+    // 可选：加载用户词典
     if (dict_path.length() > 1){
         lac.load_customization(dict_path);
     }
 
-    string query = "baidu是一个优秀的公司 哈哈哈 ";
-    // while (true)
-    {
-        // if(!getline(cin, query)){
-        //     break;
-        // }
+    string query;
+    cout << "请输入文本(Enter退出): ";
+    while (getline(cin, query)){
+        if (query.empty()) {
+            break;
+        }
 
-        // 执行与打印输出结果
-        auto result = lac.run(query);
-        for (size_t i = 0; i < result.size(); i ++){
-            if(result[i].tag.length() == 0){
-                cout << result[i].word << " ";
-            }else{
-                cout << result[i].word << "/" << result[i].tag << " ";
-            }
+        // 执行并打印结果
+        auto result = lac.run_rank(query);
+        for (size_t i = 0; i < result.size(); i++){
+            cout << result[i].word << "/" << result[i].tag << "/" << result[i].rank << " ";
         }
         cout << endl;
+        cout << "请输入文本(Enter退出): ";
     }
+    
+    return 0;
 }
