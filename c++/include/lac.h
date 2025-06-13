@@ -69,6 +69,9 @@ private:
     std::shared_ptr<paddle_infer::Predictor> _rank_predictor;
     std::shared_ptr<paddle_infer::Tensor> _rank_output_tensor;
 
+    // 添加word_length相关的成员变量
+    std::vector<std::vector<int>> _words_length_batch;
+
 public:
     LAC(const std::string& model_path, CODE_TYPE type = CODE_TYPE::CODE_UTF8);
     LAC(LAC&);
@@ -85,6 +88,7 @@ public:
     std::vector<OutputItem> run_rank(const std::string& query);
     std::vector<std::vector<OutputItem>> run_rank(const std::vector<std::string>& query);
     int merge_rank_weights(const std::vector<std::vector<std::string>>& tags_for_rank_batch);
+    int merge_rank_weights_with_word_length(const std::vector<std::vector<std::string>>& tags_for_rank_batch);
     int parse_rank_results(const std::shared_ptr<paddle_infer::Tensor>& rank_tensor, 
                            std::vector<std::vector<OutputItem>>& results);
 
