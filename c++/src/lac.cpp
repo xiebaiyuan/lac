@@ -236,6 +236,7 @@ void LAC::enable_rank_mode(const std::string& rank_model_path) {
     
     std::cout << "Rank model loaded from: " << rank_model_path << std::endl;
     auto output_names = this->_rank_predictor->GetOutputNames();
+    std::cout << "Rank model output name: " << output_names[0] << std::endl;
     this->_rank_output_tensor = this->_rank_predictor->GetOutputHandle(output_names[0]);
 }
 
@@ -257,110 +258,122 @@ std::vector<std::vector<OutputItem>> LAC::run_rank(const std::vector<std::string
     this->feed_data(querys);
     this->_predictor->Run();
     
-    // 获取LAC输出
-    int output_size = 0;
-    int64_t *output_d = this->_output_tensor->data<int64_t>(&(this->_place), &output_size);
+    // 获取LAC输出 - 修复：正确获取输出tensor
+    auto output_lod = this->_output_tensor->lod();
+    auto output_shape = this->_output_tensor->shape();
+    int lac_output_size = 0;
+    int64_t *lac_output_d = this->_output_tensor->data<int64_t>(&(this->_place), &lac_output_size);
     
-    // 清空结果
-    this->_labels.clear();
-    this->_results_batch.clear();
-    
-    // LAC处理结果
-    for (size_t i = 0; i < this->_lod[0].size() - 1; ++i) {
-        for (size_t j = 0; j < _lod[0][i + 1] - _lod[0][i]; ++j) {
-            int64_t cur_label_id = output_d[_lod[0][i] + j];
-            auto it = this->_id2label_dict->find(cur_label_id);
-            this->_labels.push_back(it->second);
-        }
-
-        // 用户自定义词典处理
-        if (custom){
-            custom->parse_customization(this->_seq_words_batch[i], this->_labels);
-        }
-
-        parse_targets(this->_labels, this->_seq_words_batch[i], this->_results);
-        this->_results_batch.push_back(this->_results);
-        this->_labels.clear();
-    }
-    
-    // Rank模型处理 - 另一种方案
-    // 获取rank模型的输入名称
+    // 准备Rank模型输入
     auto rank_input_names = this->_rank_predictor->GetInputNames();
-    
-    if (rank_input_names.size() >= 2) {
-        // 获取LAC模型的输入输出数据
-        auto input_lod = this->_input_tensor->lod();
-        auto input_shape = this->_input_tensor->shape();
-        auto output_lod = this->_output_tensor->lod();
-        auto output_shape = this->_output_tensor->shape();
-        
-        // 创建rank模型的输入句柄
-        auto rank_input_handle1 = this->_rank_predictor->GetInputHandle(rank_input_names[0]);
-        auto rank_input_handle2 = this->_rank_predictor->GetInputHandle(rank_input_names[1]);
-        
-        // 设置LOD和形状
-        rank_input_handle1->SetLoD(input_lod);
-        rank_input_handle1->Reshape(input_shape);
-        rank_input_handle2->SetLoD(output_lod);
-        rank_input_handle2->Reshape(output_shape);
-        
-        // 复制数据
-        int64_t *input_d = this->_input_tensor->data<int64_t>(&(this->_place), &output_size);
-        int64_t *output_d = this->_output_tensor->data<int64_t>(&(this->_place), &output_size);
-        
-        int64_t *rank_input_d1 = rank_input_handle1->mutable_data<int64_t>(this->_place);
-        int64_t *rank_input_d2 = rank_input_handle2->mutable_data<int64_t>(this->_place);
-        
-        // 复制数据
-        size_t input_size = input_shape[0];
-        size_t output_size = output_shape[0];
-        
-        std::memcpy(rank_input_d1, input_d, input_size * sizeof(int64_t));
-        std::memcpy(rank_input_d2, output_d, output_size * sizeof(int64_t));
-    } else {
+    if (rank_input_names.size() < 2) {
         std::cerr << "Rank model doesn't have enough inputs!" << std::endl;
-        return this->_results_batch;
+        return run(querys);
     }
+    
+    // 设置Rank模型的两个输入：words和crf_decode
+    auto rank_words_input = this->_rank_predictor->GetInputHandle(rank_input_names[0]);
+    auto rank_crf_input = this->_rank_predictor->GetInputHandle(rank_input_names[1]);
+    
+    // 复用LAC的words输入数据
+    auto input_lod = this->_input_tensor->lod();
+    auto input_shape = this->_input_tensor->shape();
+    int lac_input_size = 0;
+    int64_t *lac_input_d = this->_input_tensor->data<int64_t>(&(this->_place), &lac_input_size);
+    
+    // 设置第一个输入（words）
+    rank_words_input->SetLoD(input_lod);
+    rank_words_input->Reshape(input_shape);
+    int64_t *rank_words_d = rank_words_input->mutable_data<int64_t>(this->_place);
+    std::memcpy(rank_words_d, lac_input_d, lac_input_size * sizeof(int64_t));
+    
+    // 设置第二个输入（crf_decode）
+    rank_crf_input->SetLoD(output_lod);
+    rank_crf_input->Reshape(output_shape);
+    int64_t *rank_crf_d = rank_crf_input->mutable_data<int64_t>(this->_place);
+    std::memcpy(rank_crf_d, lac_output_d, lac_output_size * sizeof(int64_t));
     
     // 运行rank模型
     this->_rank_predictor->Run();
     
-    // 解析Rank结果并合并到LAC结果中
-    parse_rank_results(this->_rank_output_tensor, this->_results_batch);
+    // 处理LAC结果（与Python逻辑保持一致）
+    this->_labels.clear();
+    this->_results_batch.clear();
+    std::vector<std::vector<std::string>> tags_for_rank_batch;
+    
+    // 按batch处理LAC输出
+    for (size_t i = 0; i < output_lod[0].size() - 1; ++i) {
+        std::vector<std::string> tags_for_rank;
+        
+        // 解析当前句子的标签
+        for (size_t j = output_lod[0][i]; j < output_lod[0][i + 1]; ++j) {
+            int64_t cur_label_id = lac_output_d[j];
+            auto it = this->_id2label_dict->find(cur_label_id);
+            this->_labels.push_back(it->second);
+            tags_for_rank.push_back(it->second);
+        }
+        
+        // 用户自定义词典处理
+        if (custom) {
+            custom->parse_customization(this->_seq_words_batch[i], this->_labels);
+        }
+        
+        // 解析为最终结果
+        parse_targets(this->_labels, this->_seq_words_batch[i], this->_results);
+        this->_results_batch.push_back(this->_results);
+        tags_for_rank_batch.push_back(tags_for_rank);
+        this->_labels.clear();
+    }
+    
+    // 解析并合并rank权重
+    merge_rank_weights(tags_for_rank_batch);
     
     return this->_results_batch;
 }
 
 /* 解析Rank模型的输出并合并到结果中 */
-int LAC::parse_rank_results(const std::shared_ptr<paddle_infer::Tensor>& rank_tensor, 
-                          std::vector<std::vector<OutputItem>>& results) {
-    auto lod = rank_tensor->lod();
-    if (lod.empty() || lod[0].empty()) {
+int LAC::merge_rank_weights(const std::vector<std::vector<std::string>>& tags_for_rank_batch) {
+    auto rank_lod = this->_rank_output_tensor->lod();
+    if (rank_lod.empty() || rank_lod[0].empty()) {
+        std::cerr << "Invalid rank output LOD" << std::endl;
         return -1;
     }
     
-    int output_size = 0;
-    int64_t *rank_output = rank_tensor->data<int64_t>(&(this->_place), &output_size);
+    int rank_output_size = 0;
+    int64_t *rank_output = this->_rank_output_tensor->data<int64_t>(&(this->_place), &rank_output_size);
     
-    size_t batch_size = lod[0].size() - 1;
-    for (size_t i = 0; i < batch_size && i < results.size(); ++i) {
-        size_t begin = lod[0][i];
-        size_t end = lod[0][i + 1];
+    size_t batch_size = rank_lod[0].size() - 1;
+    
+    for (size_t sent_index = 0; sent_index < batch_size && sent_index < this->_results_batch.size(); ++sent_index) {
+        size_t begin = rank_lod[0][sent_index];
+        size_t end = rank_lod[0][sent_index + 1];
         
-        std::vector<int> rank_values;
+        // 获取当前句子的rank权重
+        std::vector<int> rank_weights;
         for (size_t j = begin; j < end; ++j) {
-            rank_values.push_back(static_cast<int>(rank_output[j]));
+            rank_weights.push_back(static_cast<int>(rank_output[j]));
         }
         
-        // 为每个结果项添加rank值
-        if (!rank_values.empty()) {
-            size_t rank_idx = 0;
-            for (size_t j = 0; j < results[i].size(); ++j) {
-                if (rank_idx < rank_values.size()) {
-                    results[i][j].rank = rank_values[rank_idx++];
+        // 按照Python逻辑合并权重
+        if (sent_index < tags_for_rank_batch.size() && !rank_weights.empty()) {
+            const auto& tags = tags_for_rank_batch[sent_index];
+            std::vector<int> merged_weights;
+            
+            // 根据标签边界合并权重（与Python parse_result逻辑一致）
+            for (size_t ind = 0; ind < tags.size() && ind < rank_weights.size(); ++ind) {
+                if (merged_weights.empty() || 
+                    tags[ind].find("-B") != std::string::npos || 
+                    tags[ind].find("-S") != std::string::npos) {
+                    merged_weights.push_back(rank_weights[ind]);
                 } else {
-                    results[i][j].rank = 0; // 默认rank值
+                    // 取最大值作为权重（与Python逻辑一致）
+                    merged_weights.back() = std::max(merged_weights.back(), rank_weights[ind]);
                 }
+            }
+            
+            // 将权重分配给结果
+            for (size_t i = 0; i < this->_results_batch[sent_index].size() && i < merged_weights.size(); ++i) {
+                this->_results_batch[sent_index][i].rank = merged_weights[i];
             }
         }
     }

@@ -84,8 +84,9 @@ public:
     void enable_rank_mode(const std::string& rank_model_path);
     std::vector<OutputItem> run_rank(const std::string& query);
     std::vector<std::vector<OutputItem>> run_rank(const std::vector<std::string>& query);
+    int merge_rank_weights(const std::vector<std::vector<std::string>>& tags_for_rank_batch);
     int parse_rank_results(const std::shared_ptr<paddle_infer::Tensor>& rank_tensor, 
-                          std::vector<std::vector<OutputItem>>& results);
+                           std::vector<std::vector<OutputItem>>& results);
 
     std::shared_ptr<Customization> custom;
 };
