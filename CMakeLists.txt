@@ -234,4 +234,25 @@ install(FILES ${PROJECT_SOURCE_DIR}/java/LacMulti.java
         DESTINATION ${PROJECT_SOURCE_DIR}/output/java)
 endif()
 
+# 添加universal构建支持
+if(APPLE)
+    # 检查是否需要universal构建
+    if(CMAKE_OSX_ARCHITECTURES STREQUAL "")
+        # 如果没有指定架构，默认使用当前系统架构
+        execute_process(
+            COMMAND uname -m
+            OUTPUT_VARIABLE CURRENT_ARCH
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+        set(CMAKE_OSX_ARCHITECTURES ${CURRENT_ARCH})
+    endif()
+    
+    message(STATUS "构建架构: ${CMAKE_OSX_ARCHITECTURES}")
+    
+    # 设置最低macOS版本
+    if(NOT CMAKE_OSX_DEPLOYMENT_TARGET)
+        set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "Minimum OS X deployment version")
+    endif()
+endif()
+
 
