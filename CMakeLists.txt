@@ -176,6 +176,11 @@ target_link_libraries(lac_multi lac ${DEPS})
 add_executable(lac_rank_demo c++/lac_rank_demo.cpp)
 set_target_properties(lac_rank_demo PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
 target_link_libraries(lac_rank_demo lac ${DEPS})
+
+# 添加rank demo
+add_executable(lac_rank c++/lac_rank_demo.cpp)
+set_target_properties(lac_rank PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
+target_link_libraries(lac_rank lac ${DEPS})
 endif()
 
 # for jni lib
