@@ -34,7 +34,7 @@ LAC::LAC(std::string model_dict_path, int threads, CODE_TYPE type)
     load_q2b_dict(q2b_dict_path, *_q2b_dict);
     std::string label_dict_path = model_dict_path + "/tag.dic";
     load_id2label_dict(label_dict_path, *_id2label_dict);
-    std::cout << "read word dict succeed" << std::endl;
+    // std::cout << "read word dict succeed" << std::endl;
 
     paddle::lite_api::MobileConfig config;
     config.set_threads(threads);  // 自行设置多线程
@@ -43,7 +43,7 @@ LAC::LAC(std::string model_dict_path, int threads, CODE_TYPE type)
     config.set_model_from_file(model_dict_path + "/model.nb");
     this->_predictor = paddle::lite_api::CreatePaddlePredictor(config);
 
-    std::cout << "load model succeed" << std::endl;
+    // std::cout << "load model succeed" << std::endl;
 
     /* 初始化输入输出变量 */
     this->_input_tensor = this->_predictor->GetInput(0);
@@ -55,7 +55,7 @@ LAC::LAC(std::string model_dict_path, int threads, CODE_TYPE type)
         this->_oov_id = word_iter->second;
     }
 
-    std::cout << "init succeed" << std::endl;
+    // std::cout << "init succeed" << std::endl;
 }
 
 

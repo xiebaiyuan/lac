@@ -52,7 +52,7 @@ LAC::LAC(const std::string& model_path, CODE_TYPE type)
     config.SetModel(model_path + "/model");
     // config.SetProgFile(model_path + "/model/__model__");
     // config.SetParamsFile(model_path + "/model/__params__");
-    std::cout << "Load model from: " << model_path  << std::endl;
+    // std::cout << "Load model from: " << model_path  << std::endl;
     // config.SetModel(model_path + "/model/__model__", model_path + "/model/__params__");
     config.SetCpuMathLibraryNumThreads(1);
     config.SwitchUseFeedFetchOps(false);
@@ -63,7 +63,7 @@ LAC::LAC(const std::string& model_path, CODE_TYPE type)
     auto input_names = this->_predictor->GetInputNames();
     this->_input_tensor = this->_predictor->GetInputHandle(input_names[0]);
 
-    std::cout << "Input tensor name: " << input_names[0] << std::endl;
+    // std::cout << "Input tensor name: " << input_names[0] << std::endl;
     auto output_names = this->_predictor->GetOutputNames();
     this->_output_tensor = this->_predictor->GetOutputHandle(output_names[0]);
     
@@ -73,7 +73,7 @@ LAC::LAC(const std::string& model_path, CODE_TYPE type)
     {
         this->_oov_id = word_iter->second;
     }
-    std::cout << "OOV id: " << this->_oov_id << std::endl;
+    // std::cout << "OOV id: " << this->_oov_id << std::endl;
 }
 
 /* 拷贝构造函数，用于多线程重载 */
@@ -111,7 +111,7 @@ int LAC::load_customization(const std::string& filename){
 /* 将字符串输入转为Tensor */
 int LAC::feed_data(const std::vector<std::string> &querys)
 {
-    std::cout << "Feed data: " << querys.size() << " queries." << std::endl;
+    // std::cout << "Feed data: " << querys.size() << " queries." << std::endl;
     this->_seq_words_batch.clear();
     this->_lod[0].clear();
 
@@ -182,7 +182,7 @@ int LAC::parse_targets(
 
 std::vector<OutputItem> LAC::run(const std::string &query)
 {
-    std::cout << "Run LAC with query: " << query << std::endl;
+    // std::cout << "Run LAC with query: " << query << std::endl;
     std::vector<std::string> query_vector = std::vector<std::string>({query});
     auto result = run(query_vector);
     return result[0];
@@ -190,9 +190,9 @@ std::vector<OutputItem> LAC::run(const std::string &query)
 
 std::vector<std::vector<OutputItem>> LAC::run(const std::vector<std::string> &querys)
 {
-    std::cout << "Run LAC with " << querys.size() << " queries." << std::endl;
+    // std::cout << "Run LAC with " << querys.size() << " queries." << std::endl;
     this->feed_data(querys);
-    std::cout << "Input tensor shape: " << std::endl;
+    // std::cout << "Input tensor shape: " << std::endl;
     this->_predictor->Run();
 
     // 对模型输出进行解码
@@ -236,9 +236,9 @@ void LAC::enable_rank_mode(const std::string& rank_model_path) {
     rank_config.SwitchUseFeedFetchOps(false);
     this->_rank_predictor = paddle_infer::CreatePredictor(rank_config);
     
-    std::cout << "Rank model loaded from: " << rank_model_path << std::endl;
+    // std::cout << "Rank model loaded from: " << rank_model_path << std::endl;
     auto output_names = this->_rank_predictor->GetOutputNames();
-    std::cout << "Rank model output name: " << output_names[0] << std::endl;
+    // std::cout << "Rank model output name: " << output_names[0] << std::endl;
     this->_rank_output_tensor = this->_rank_predictor->GetOutputHandle(output_names[0]);
 }
 
