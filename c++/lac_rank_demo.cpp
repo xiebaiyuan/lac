@@ -18,10 +18,74 @@ limitations under the License. */
 #include <sstream>
 #include <iomanip>
 #include <ctime>
+#include <map>
+#include <vector>
+#include <algorithm>
 #include "lac.h"
 
 using namespace std;
 using namespace chrono;
+
+// 用于记录词频的辅助结构体
+struct WordFreq {
+    string word;
+    string tag;
+    string tag_description;
+    int frequency;
+    
+    WordFreq(string w, string t, string td, int f) : word(w), tag(t), tag_description(td), frequency(f) {}
+};
+
+// 按频率降序排序函数
+bool compareByFreq(const WordFreq& a, const WordFreq& b) {
+    return a.frequency > b.frequency;
+}
+
+// 检查标签是否属于我们关注的类型
+bool isTargetTag(const string& tag) {
+    // 名词(n,nz,nw), 专有名词(PER,LOC,ORG), 时间(TIME)等
+    return tag == "n" || tag == "nz" || tag == "nw" || tag == "PER" || 
+           tag == "LOC" || tag == "ORG" || tag == "TIME" || tag == "s";
+}
+
+// 获取标签的人类可读描述
+string getTagDescription(const string& tag) {
+    if (tag == "n") return "普通名词";
+    if (tag == "nz") return "其他专名";
+    if (tag == "nw") return "作品名";
+    if (tag == "s") return "处所名词";
+    if (tag == "PER") return "人名";
+    if (tag == "LOC") return "地名";
+    if (tag == "ORG") return "机构名";
+    if (tag == "TIME") return "时间";
+    return tag; // 如果没有匹配，返回原始标签
+}
+
+// 收集重要词汇并按频率排序
+vector<WordFreq> collectImportantWords(const vector<OutputItem>& result) {
+    // 按word和tag统计词频
+    map<pair<string, string>, int> wordTagFreq;
+    for (const auto& item : result) {
+        if (isTargetTag(item.tag)) {
+            wordTagFreq[make_pair(item.word, item.tag)]++;
+        }
+    }
+    
+    // 转换为WordFreq列表
+    vector<WordFreq> wordFreqs;
+    for (const auto& entry : wordTagFreq) {
+        const string& word = entry.first.first;
+        const string& tag = entry.first.second;
+        int freq = entry.second;
+        
+        wordFreqs.push_back(WordFreq(word, tag, getTagDescription(tag), freq));
+    }
+    
+    // 按频率排序
+    sort(wordFreqs.begin(), wordFreqs.end(), compareByFreq);
+    
+    return wordFreqs;
+}
 
 // 添加JSON构建辅助函数
 string build_result_with_timing_json(const vector<OutputItem>& result, 
@@ -54,10 +118,30 @@ string build_result_with_timing_json(const vector<OutputItem>& result,
     }
     json << "],";
     
+    // 收集重要词汇
+    auto importantWords = collectImportantWords(result);
+    
+    // 添加词频统计信息，以词为中心
+    json << "\"important_words\":[";
+    for (size_t i = 0; i < importantWords.size(); ++i) {
+        json << "{";
+        json << "\"word\":\"" << importantWords[i].word << "\",";
+        json << "\"tag\":\"" << importantWords[i].tag << "\",";
+        json << "\"tag_description\":\"" << importantWords[i].tag_description << "\",";
+        json << "\"frequency\":" << importantWords[i].frequency;
+        json << "}";
+        
+        if (i < importantWords.size() - 1) {
+            json << ",";
+        }
+    }
+    json << "],";
+    
     // 添加元数据
     json << "\"meta\":{";
     json << "\"input_length\":" << input_text.length() << ",";
     json << "\"word_count\":" << result.size() << ",";
+    json << "\"important_word_count\":" << importantWords.size() << ",";
     json << "\"timestamp\":" << now;
     json << "},";
     
@@ -75,6 +159,34 @@ string build_result_with_timing_json(const vector<OutputItem>& result,
     
     json << "}";
     return json.str();
+}
+
+// 收集批量处理的重要词汇
+vector<WordFreq> collectBatchImportantWords(const vector<vector<OutputItem>>& results_batch) {
+    // 按word和tag统计频率
+    map<pair<string, string>, int> wordTagFreq;
+    for (const auto& result : results_batch) {
+        for (const auto& item : result) {
+            if (isTargetTag(item.tag)) {
+                wordTagFreq[make_pair(item.word, item.tag)]++;
+            }
+        }
+    }
+    
+    // 转换为WordFreq列表
+    vector<WordFreq> wordFreqs;
+    for (const auto& entry : wordTagFreq) {
+        const string& word = entry.first.first;
+        const string& tag = entry.first.second;
+        int freq = entry.second;
+        
+        wordFreqs.push_back(WordFreq(word, tag, getTagDescription(tag), freq));
+    }
+    
+    // 按频率排序
+    sort(wordFreqs.begin(), wordFreqs.end(), compareByFreq);
+    
+    return wordFreqs;
 }
 
 // 添加批量处理的JSON构建函数
@@ -114,6 +226,25 @@ string build_batch_result_with_timing_json(const vector<vector<OutputItem>>& res
     }
     json << "],";
     
+    // 收集重要词汇
+    auto importantWords = collectBatchImportantWords(results_batch);
+    
+    // 添加词频统计信息，以词为中心
+    json << "\"important_words\":[";
+    for (size_t i = 0; i < importantWords.size(); ++i) {
+        json << "{";
+        json << "\"word\":\"" << importantWords[i].word << "\",";
+        json << "\"tag\":\"" << importantWords[i].tag << "\",";
+        json << "\"tag_description\":\"" << importantWords[i].tag_description << "\",";
+        json << "\"frequency\":" << importantWords[i].frequency;
+        json << "}";
+        
+        if (i < importantWords.size() - 1) {
+            json << ",";
+        }
+    }
+    json << "],";
+    
     // 计算总的输入长度和词数
     int total_input_length = 0;
     int total_word_count = 0;
@@ -129,6 +260,7 @@ string build_batch_result_with_timing_json(const vector<vector<OutputItem>>& res
     json << "\"batch_size\":" << input_texts.size() << ",";
     json << "\"total_input_length\":" << total_input_length << ",";
     json << "\"total_word_count\":" << total_word_count << ",";
+    json << "\"important_word_count\":" << importantWords.size() << ",";
     json << "\"timestamp\":" << now;
     json << "},";
     

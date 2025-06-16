@@ -1,8 +1,10 @@
 /.idea/
-/models/*
+/models/
 /build/
 /node_modules/
 /output/
 *.zip
 /c++/.idea/
 /output/
+/models_bk/
+lac_mac_universal
