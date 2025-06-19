@@ -35,7 +35,7 @@ macro(safe_set_static_flag)
 endmacro()
 
 if(NOT DEFINED PADDLE_ROOT)
-    set(PADDLE_ROOT /Users/xiebaiyuan/PaddleOCR/deploy/cpp_infer/paddle_inference/paddle_inference_install_dir_mac_universal/)
+    set(PADDLE_ROOT "D:/PaddleOCRWin/deploy/cpp_infer/paddle_inference/paddle_inference")
 #    message(FATAL_ERROR "please set PADDLE_ROOT with -DPADDLE_ROOT=/path/paddle/lib")
 endif()
 if (WITH_JNILIB AND NOT DEFINED JAVA_HOME)
@@ -135,7 +135,8 @@ if(WITH_STATIC_LIB)
     set(DEPS ${PADDLE_ABS_PATH}/paddle/lib/libpaddle_inference${CMAKE_STATIC_LIBRARY_SUFFIX})
 else()
     if(WIN32)
-        set(DEPS ${PADDLE_ABS_PATH}/paddle/lib/paddle_inference${CMAKE_SHARED_LIBRARY_SUFFIX})
+        # 修改这里：使用 .lib 文件而不是 .dll 文件
+        set(DEPS ${PADDLE_ABS_PATH}/paddle/lib/paddle_inference.lib)
     else()
         set(DEPS ${PADDLE_ABS_PATH}/paddle/lib/libpaddle_inference${CMAKE_SHARED_LIBRARY_SUFFIX})
     endif()
@@ -164,18 +165,18 @@ add_library(lac ${SOURCE})
 
 # for c++ binary demo
 if (WITH_DEMO)
-add_executable(lac_demo c++/lac_demo.cpp)
-set_target_properties(lac_demo PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
-target_link_libraries(lac_demo lac ${DEPS})
+# add_executable(lac_demo c++/lac_demo.cpp)
+# set_target_properties(lac_demo PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
+# target_link_libraries(lac_demo lac ${DEPS})
 
-add_executable(lac_multi c++/lac_multi.cpp)
-set_target_properties(lac_multi PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
-target_link_libraries(lac_multi lac ${DEPS})
+# add_executable(lac_multi c++/lac_multi.cpp)
+# set_target_properties(lac_multi PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
+# target_link_libraries(lac_multi lac ${DEPS})
 
-# 添加rank demo
-add_executable(lac_rank_demo c++/lac_rank_demo.cpp)
-set_target_properties(lac_rank_demo PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
-target_link_libraries(lac_rank_demo lac ${DEPS})
+# # 添加rank demo
+# add_executable(lac_rank_demo c++/lac_rank_demo.cpp)
+# set_target_properties(lac_rank_demo PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
+# target_link_libraries(lac_rank_demo lac ${DEPS})
 
 # 添加rank demo
 add_executable(lac_rank c++/lac_rank_demo.cpp)
@@ -193,22 +194,22 @@ endif()
 
 
 if(WIN32)
-  if (EXISTS ${mklml_inc_path} AND EXISTS ${mklml_lib_path})
-    add_custom_command(TARGET lac_demo POST_BUILD
-          COMMAND ${CMAKE_COMMAND} -E copy ${mklml_lib_path}/mklml.dll ${CMAKE_BINARY_DIR}/Release
-          COMMAND ${CMAKE_COMMAND} -E copy ${mklml_lib_path}/libiomp5md.dll ${CMAKE_BINARY_DIR}/Release
-          COMMAND ${CMAKE_COMMAND} -E copy ${mkldnn_lib_path}/mkldnn.dll  ${CMAKE_BINARY_DIR}/Release
-    )
-  else()
-    add_custom_command(TARGET lac_demo POST_BUILD
-          COMMAND ${CMAKE_COMMAND} -E copy ${openblas_lib_path}/openblas.dll ${CMAKE_BINARY_DIR}/Release
-    )
-  endif()
-  if(NOT WITH_STATIC_LIB)
-      add_custom_command(TARGET lac_demo POST_BUILD 
-        COMMAND ${CMAKE_COMMAND} -E copy "${PADDLE_ABS_PATH}/paddle/lib/libpaddle_inference.dll" ${CMAKE_BINARY_DIR}/${CMAKE_BUILD_TYPE}
-      )
-  endif()
+#   if (EXISTS ${mklml_inc_path} AND EXISTS ${mklml_lib_path})
+#     add_custom_command(TARGET lac_demo POST_BUILD
+#           COMMAND ${CMAKE_COMMAND} -E copy ${mklml_lib_path}/mklml.dll ${CMAKE_BINARY_DIR}/Release
+#           COMMAND ${CMAKE_COMMAND} -E copy ${mklml_lib_path}/libiomp5md.dll ${CMAKE_BINARY_DIR}/Release
+#           COMMAND ${CMAKE_COMMAND} -E copy ${mkldnn_lib_path}/mkldnn.dll  ${CMAKE_BINARY_DIR}/Release
+#     )
+#   else()
+#     add_custom_command(TARGET lac_demo POST_BUILD
+#           COMMAND ${CMAKE_COMMAND} -E copy ${openblas_lib_path}/openblas.dll ${CMAKE_BINARY_DIR}/Release
+#     )
+#   endif()
+#   if(NOT WITH_STATIC_LIB)
+#       add_custom_command(TARGET lac_demo POST_BUILD 
+#         COMMAND ${CMAKE_COMMAND} -E copy "${PADDLE_ABS_PATH}/paddle/lib/libpaddle_inference.dll" ${CMAKE_BINARY_DIR}/${CMAKE_BUILD_TYPE}
+#       )
+#   endif()
 endif()
 
 
@@ -218,9 +219,9 @@ install(FILES ${PROJECT_SOURCE_DIR}/c++/include/lac.h
 
 
 if (WITH_DEMO)
-install(TARGETS lac_demo DESTINATION ${PROJECT_SOURCE_DIR}/output/bin)
-install(TARGETS lac_multi DESTINATION ${PROJECT_SOURCE_DIR}/output/bin)
-install(TARGETS lac_rank_demo DESTINATION ${PROJECT_SOURCE_DIR}/output/bin)
+# install(TARGETS lac_demo DESTINATION ${PROJECT_SOURCE_DIR}/output/bin)
+# install(TARGETS lac_multi DESTINATION ${PROJECT_SOURCE_DIR}/output/bin)
+# install(TARGETS lac_rank_demo DESTINATION ${PROJECT_SOURCE_DIR}/output/bin)
 endif()
 
 if (WITH_JNILIB)
