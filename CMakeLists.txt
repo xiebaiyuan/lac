@@ -194,22 +194,67 @@ endif()
 
 
 if(WIN32)
-#   if (EXISTS ${mklml_inc_path} AND EXISTS ${mklml_lib_path})
-#     add_custom_command(TARGET lac_demo POST_BUILD
-#           COMMAND ${CMAKE_COMMAND} -E copy ${mklml_lib_path}/mklml.dll ${CMAKE_BINARY_DIR}/Release
-#           COMMAND ${CMAKE_COMMAND} -E copy ${mklml_lib_path}/libiomp5md.dll ${CMAKE_BINARY_DIR}/Release
-#           COMMAND ${CMAKE_COMMAND} -E copy ${mkldnn_lib_path}/mkldnn.dll  ${CMAKE_BINARY_DIR}/Release
-#     )
-#   else()
-#     add_custom_command(TARGET lac_demo POST_BUILD
-#           COMMAND ${CMAKE_COMMAND} -E copy ${openblas_lib_path}/openblas.dll ${CMAKE_BINARY_DIR}/Release
-#     )
-#   endif()
-#   if(NOT WITH_STATIC_LIB)
-#       add_custom_command(TARGET lac_demo POST_BUILD 
-#         COMMAND ${CMAKE_COMMAND} -E copy "${PADDLE_ABS_PATH}/paddle/lib/libpaddle_inference.dll" ${CMAKE_BINARY_DIR}/${CMAKE_BUILD_TYPE}
-#       )
-#   endif()
+  if (WITH_DEMO)
+    # 拷贝数学库依赖
+    if (EXISTS ${mklml_inc_path} AND EXISTS ${mklml_lib_path})
+      add_custom_command(TARGET lac_rank POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy ${mklml_lib_path}/mklml.dll ${CMAKE_BINARY_DIR}/Release
+            COMMAND ${CMAKE_COMMAND} -E copy ${mklml_lib_path}/libiomp5md.dll ${CMAKE_BINARY_DIR}/Release
+      )
+      if (EXISTS ${mkldnn_lib_path}/mkldnn.dll)
+        add_custom_command(TARGET lac_rank POST_BUILD
+              COMMAND ${CMAKE_COMMAND} -E copy ${mkldnn_lib_path}/mkldnn.dll ${CMAKE_BINARY_DIR}/Release
+        )
+      endif()
+    else()
+      if (EXISTS ${openblas_lib_path}/openblas.dll)
+        add_custom_command(TARGET lac_rank POST_BUILD
+              COMMAND ${CMAKE_COMMAND} -E copy ${openblas_lib_path}/openblas.dll ${CMAKE_BINARY_DIR}/Release
+        )
+      endif()
+    endif()
+    
+    # 拷贝Paddle主库
+    if(NOT WITH_STATIC_LIB)
+        add_custom_command(TARGET lac_rank POST_BUILD 
+          COMMAND ${CMAKE_COMMAND} -E copy "${PADDLE_ABS_PATH}/paddle/lib/paddle_inference.dll" ${CMAKE_BINARY_DIR}/Release
+        )
+    endif()
+    
+    # 拷贝其他第三方库依赖
+    # protobuf
+    if(EXISTS "${PADDLE_LIB_THIRD_PARTY_PATH}protobuf/lib/libprotobuf.dll")
+      add_custom_command(TARGET lac_rank POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy "${PADDLE_LIB_THIRD_PARTY_PATH}protobuf/lib/libprotobuf.dll" ${CMAKE_BINARY_DIR}/Release
+      )
+    endif()
+    
+    # glog
+    if(EXISTS "${PADDLE_LIB_THIRD_PARTY_PATH}glog/lib/glog.dll")
+      add_custom_command(TARGET lac_rank POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy "${PADDLE_LIB_THIRD_PARTY_PATH}glog/lib/glog.dll" ${CMAKE_BINARY_DIR}/Release
+      )
+    endif()
+    
+    # gflags
+    if(EXISTS "${PADDLE_LIB_THIRD_PARTY_PATH}gflags/lib/gflags.dll")
+      add_custom_command(TARGET lac_rank POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy "${PADDLE_LIB_THIRD_PARTY_PATH}gflags/lib/gflags.dll" ${CMAKE_BINARY_DIR}/Release
+      )
+    endif()
+    
+    # xxhash
+    if(EXISTS "${PADDLE_LIB_THIRD_PARTY_PATH}xxhash/lib/xxhash.dll")
+      add_custom_command(TARGET lac_rank POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy "${PADDLE_LIB_THIRD_PARTY_PATH}xxhash/lib/xxhash.dll" ${CMAKE_BINARY_DIR}/Release
+      )
+    endif()
+    
+    # 打印拷贝完成信息
+    add_custom_command(TARGET lac_rank POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E echo "All dependencies copied to Release directory"
+    )
+  endif()
 endif()
 
 
